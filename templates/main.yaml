@@ -1,0 +1,482 @@
+Description: Lambda function reading secrets and objects with App Load Balancer
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Description: Suffix used in name tags
+    Default: gd-cfn
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: 10.1.0.0/16
+    Public0:
+      CIDR: 10.1.0.0/24
+    Public1:
+      CIDR: 10.1.1.0/24
+    Private0:
+      CIDR: 10.1.2.0/24
+    Private1:
+      CIDR: 10.1.3.0/24
+
+Outputs:
+  LoadBalancerDNS:
+    Value: !GetAtt LoadBalancer.DNSName
+
+Resources:
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap [SubnetConfig, VPC, CIDR]
+      Tags:
+        - Value: !Sub "${NamePrefix}-vpc"
+          Key: "Name"
+
+  PrivateSubnet0:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !FindInMap [SubnetConfig, Private0, CIDR]
+      MapPublicIpOnLaunch: false
+      Ipv6Native: false
+      Tags:
+        - Value: !Sub
+            - "${NamePrefix}-subnet-private0-${Az}"
+            - Az: !Select [0, !GetAZs ""]
+          Key: "Name"
+
+  PrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !FindInMap [SubnetConfig, Private1, CIDR]
+      MapPublicIpOnLaunch: false
+      Ipv6Native: false
+      Tags:
+        - Value: !Sub
+            - "${NamePrefix}-subnet-private1-${Az}"
+            - Az: !Select [1, !GetAZs ""]
+          Key: "Name"
+
+  PublicSubnet0:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !FindInMap [SubnetConfig, Public0, CIDR]
+      MapPublicIpOnLaunch: true
+      Ipv6Native: false
+      Tags:
+        - Value: !Sub
+            - "${NamePrefix}-subnet-public0-${Az}"
+            - Az: !Select [0, !GetAZs ""]
+          Key: "Name"
+
+  PublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !FindInMap [SubnetConfig, Public1, CIDR]
+      MapPublicIpOnLaunch: true
+      Ipv6Native: false
+      Tags:
+        - Value: !Sub
+            - "${NamePrefix}-subnet-public1-${Az}"
+            - Az: !Select [1, !GetAZs ""]
+          Key: "Name"
+
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Value: !Sub "${NamePrefix}-igw"
+          Key: "Name"
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetsRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Value: !Sub "${NamePrefix}-rtb-public"
+          Key: "Name"
+
+  PrivateSubnet0RouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Value: !Sub "${NamePrefix}-rtb-private0"
+          Key: "Name"
+
+  PrivateSubnet1RouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Value: !Sub "${NamePrefix}-rtb-private1"
+          Key: "Name"
+
+  PublicRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref PublicSubnetsRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation0:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicSubnetsRouteTable
+      SubnetId: !Ref PublicSubnet0
+
+  PublicSubnetRouteTableAssociation1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicSubnetsRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PrivateSubnetRouteTableAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnet0RouteTable
+      SubnetId: !Ref PrivateSubnet0
+
+  PrivateSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnet1RouteTable
+      SubnetId: !Ref PrivateSubnet1
+
+  S3Endpoint:
+    Type: "AWS::EC2::VPCEndpoint"
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: "com.amazonaws.eu-north-1.s3"
+      VpcEndpointType: "Gateway"
+      RouteTableIds:
+        - Ref: "PrivateSubnet0RouteTable"
+        - Ref: "PrivateSubnet1RouteTable"
+      PolicyDocument:
+        Version: "2008-10-17"
+        Statement:
+          - Resource: "*"
+            Action: "*"
+            Effect: "Allow"
+            Principal: "*"
+      Tags:
+        - Value: !Sub "${NamePrefix}-s3-endpoint"
+          Key: "Name"
+
+  SecretsManagerEndpoint:
+    Type: "AWS::EC2::VPCEndpoint"
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: "com.amazonaws.eu-north-1.secretsmanager"
+      VpcEndpointType: "Interface"
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref SecretsManagerSecurityGroup
+      SubnetIds:
+        - !Ref PrivateSubnet0
+        - !Ref PrivateSubnet1
+      PolicyDocument:
+        Statement:
+          - Resource: "*"
+            Action: "*"
+            Effect: "Allow"
+            Principal: "*"
+      Tags:
+        - Value: !Sub "${NamePrefix}-secrets-manager-endpoint"
+          Key: "Name"
+
+  FunctionSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: !Sub "${NamePrefix}-func-sg"
+      GroupDescription: "Allow HTTP from LB"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "-1"
+
+  SecretsManagerSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: !Sub "${NamePrefix}-sm-endpoint-sg"
+      GroupDescription: "Allow HTTPS from lambda to read from SM endpoint"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref FunctionSecurityGroup
+      SecurityGroupEgress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "-1"
+
+  LoadBalancerSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: !Sub "${NamePrefix}-load-balancer-sg"
+      GroupDescription: "Allow inbound HTTP traffic"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+      SecurityGroupEgress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "-1"
+
+  LoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: !Sub "${NamePrefix}-load-balancer"
+      Type: "application"
+      Scheme: "internet-facing"
+      IpAddressType: "ipv4"
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnet0
+        - !Ref PublicSubnet1
+
+  LBListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      Protocol: "HTTP"
+      Port: 80
+      LoadBalancerArn: !Ref LoadBalancer
+      DefaultActions:
+        - Order: 1
+          TargetGroupArn: !Ref LBTargetGroup
+          Type: "forward"
+          ForwardConfig:
+            TargetGroupStickinessConfig:
+              Enabled: false
+              DurationSeconds: 3600
+            TargetGroups:
+              - TargetGroupArn: !Ref LBTargetGroup
+                Weight: 1
+
+  LBTargetGroup:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    DependsOn: FunctionPermission
+    Properties:
+      Name: !Sub "${NamePrefix}-target-group"
+      IpAddressType: "ipv4"
+      TargetType: "lambda"
+      Targets:
+        - AvailabilityZone: "all"
+          Id: !GetAtt LambdaFunction.Arn
+
+  SecretsManagerSecret:
+    Type: "AWS::SecretsManager::Secret"
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      ReplicaRegions: []
+      Tags:
+        - Value: !Sub "${NamePrefix}-secret1"
+          Key: Name
+      Name: "secret1"
+      SecretString: "First secret value"
+
+  Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      AbacStatus: "Disabled"
+      PublicAccessBlockConfiguration:
+        RestrictPublicBuckets: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        BlockPublicAcls: true
+      BucketName: !Sub "${NamePrefix}-bucket"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: "BucketOwnerEnforced"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: false
+            BlockedEncryptionTypes:
+              EncryptionType:
+                - "NONE"
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+
+  LambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: !Sub "${NamePrefix}-function"
+      Description: "Read secret from secrets manager and list objects from a bucket"
+      MemorySize: 128
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref FunctionSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet0
+          - !Ref PrivateSubnet1
+      Timeout: 5
+      Handler: "index.lambda_handler"
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref Bucket
+      Code:
+        ZipFile: |
+          import os
+          import json
+          import boto3
+          from botocore.exceptions import ClientError
+
+          region_name = "eu-north-1"
+          bucket_name = os.environ["BUCKET_NAME"]
+
+
+          secrets_client = boto3.client(service_name='secretsmanager', region_name=region_name)
+          s3_client = boto3.client(service_name='s3', region_name=region_name)
+
+
+          def lambda_handler(event, context):
+              print("Event: ", event)
+              print("Parameters: ", event.get("queryStringParameters"))
+              try:
+                  query_params = event.get("queryStringParameters") or event
+                  secret_key = query_params.get("secret_key")
+
+                  if not secret_key:
+                      return {
+                          "statusCode": 400,
+                          "statusDescription": "400 Bad Request",
+                          "isBase64Encoded": False,
+                          "headers": {
+                              "Content-Type": "application/json"
+                          },
+                          "body": json.dumps({
+                              "error": "Missing secret_key"
+                          })
+                      }
+                  print("Get secret")
+                  secret_response = secrets_client.get_secret_value(
+                      SecretId=secret_key
+                  )
+                  print("Secret retrieved: ", secret_response)
+
+                  secret_value = secret_response["SecretString"]
+                  print("Secret value: ", secret_value)
+
+                  print("Reading bucket")
+                  s3_response = s3_client.list_objects_v2(
+                      Bucket=bucket_name
+                  )
+
+                  objects = [
+                      obj["Key"]
+                      for obj in s3_response.get("Contents", [])
+                  ]
+                  print("Objects in bucket: ", objects)
+
+                  return {
+                      "statusCode": 200,
+                      "statusDescription": "200 OK",
+                      "isBase64Encoded": False,
+                      "headers": {
+                          "Content-Type": "application/json"
+                      },
+                      "body": json.dumps({
+                          "secret_value": secret_value,
+                          "bucket_objects": objects
+                      })
+                  }
+
+              except Exception as e:
+                  return {
+                      "statusCode": 500,
+                      "statusDescription": "500 Internal Server Error",
+                      "isBase64Encoded": False,
+                      "headers": {
+                          "Content-Type": "application/json"
+                      },
+                      "body": json.dumps({
+                          "error": str(e)
+                      })
+                  }
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: "python3.14"
+      PackageType: "Zip"
+
+  FunctionPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "elasticloadbalancing.amazonaws.com"
+
+  FunctionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/service-role/"
+      MaxSessionDuration: 3600
+      RoleName: !Sub "${NamePrefix}-func-role"
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Resource: !GetAtt Bucket.Arn
+                Action: "s3:ListBucket"
+                Effect: "Allow"
+                Sid: "VisualEditor0"
+          PolicyName: "ListMyBucketObjects"
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Resource: "*"
+                Action: "secretsmanager:GetSecretValue"
+                Effect: "Allow"
+                Sid: "VisualEditor0"
+          PolicyName: "ReadSecretsValue"
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+          PolicyName: "CreateLogs"
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DeleteNetworkInterface"
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:DescribeSubnets"
+                  - "ec2:DescribeVpcs"
+          PolicyName: "AllowExec"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
