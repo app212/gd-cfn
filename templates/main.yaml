@@ -22,6 +22,9 @@ Mappings:
 Outputs:
   LoadBalancerDNS:
     Value: !GetAtt LoadBalancer.DNSName
+  BucketName:
+    Description: S3 bucket name
+    Value: !Ref Bucket
 
 Resources:
   VPC:
@@ -33,6 +36,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-vpc"
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   PrivateSubnet0:
     Type: "AWS::EC2::Subnet"
@@ -47,6 +52,8 @@ Resources:
             - "${NamePrefix}-subnet-private0-${Az}"
             - Az: !Select [0, !GetAZs ""]
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   PrivateSubnet1:
     Type: "AWS::EC2::Subnet"
@@ -61,6 +68,8 @@ Resources:
             - "${NamePrefix}-subnet-private1-${Az}"
             - Az: !Select [1, !GetAZs ""]
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   PublicSubnet0:
     Type: "AWS::EC2::Subnet"
@@ -75,6 +84,8 @@ Resources:
             - "${NamePrefix}-subnet-public0-${Az}"
             - Az: !Select [0, !GetAZs ""]
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   PublicSubnet1:
     Type: "AWS::EC2::Subnet"
@@ -89,6 +100,8 @@ Resources:
             - "${NamePrefix}-subnet-public1-${Az}"
             - Az: !Select [1, !GetAZs ""]
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   InternetGateway:
     Type: "AWS::EC2::InternetGateway"
@@ -96,6 +109,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-igw"
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   GatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -110,6 +125,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-rtb-public"
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   PrivateSubnet0RouteTable:
     Type: "AWS::EC2::RouteTable"
@@ -118,6 +135,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-rtb-private0"
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   PrivateSubnet1RouteTable:
     Type: "AWS::EC2::RouteTable"
@@ -126,6 +145,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-rtb-private1"
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   PublicRoute:
     Type: "AWS::EC2::Route"
@@ -177,6 +198,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-s3-endpoint"
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   SecretsManagerEndpoint:
     Type: "AWS::EC2::VPCEndpoint"
@@ -199,6 +222,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-secrets-manager-endpoint"
           Key: "Name"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   FunctionSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
@@ -214,6 +239,11 @@ Resources:
       SecurityGroupEgress:
         - CidrIp: "0.0.0.0/0"
           IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-func-sec-group"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   SecretsManagerSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
@@ -229,6 +259,11 @@ Resources:
       SecurityGroupEgress:
         - CidrIp: "0.0.0.0/0"
           IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-sm-sec-group"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   LoadBalancerSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
@@ -244,6 +279,11 @@ Resources:
       SecurityGroupEgress:
         - CidrIp: "0.0.0.0/0"
           IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-lb-sec-group"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   LoadBalancer:
     Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
@@ -257,6 +297,11 @@ Resources:
       Subnets:
         - !Ref PublicSubnet0
         - !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-lb"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   LBListener:
     Type: "AWS::ElasticLoadBalancingV2::Listener"
@@ -286,6 +331,11 @@ Resources:
       Targets:
         - AvailabilityZone: "all"
           Id: !GetAtt LambdaFunction.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-target-group"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   SecretsManagerSecret:
     Type: "AWS::SecretsManager::Secret"
@@ -296,6 +346,8 @@ Resources:
       Tags:
         - Value: !Sub "${NamePrefix}-secret1"
           Key: Name
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
       Name: "secret1"
       SecretString: "First secret value"
 
@@ -320,6 +372,11 @@ Resources:
                 - "NONE"
             ServerSideEncryptionByDefault:
               SSEAlgorithm: "AES256"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-bucket"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   LambdaFunction:
     Type: "AWS::Lambda::Function"
@@ -340,86 +397,15 @@ Resources:
           BUCKET_NAME: !Ref Bucket
       Code:
         ZipFile: |
-          import os
-          import json
-          import boto3
-          from botocore.exceptions import ClientError
-
-          region_name = "eu-north-1"
-          bucket_name = os.environ["BUCKET_NAME"]
-
-
-          secrets_client = boto3.client(service_name='secretsmanager', region_name=region_name)
-          s3_client = boto3.client(service_name='s3', region_name=region_name)
-
-
-          def lambda_handler(event, context):
-              print("Event: ", event)
-              print("Parameters: ", event.get("queryStringParameters"))
-              try:
-                  query_params = event.get("queryStringParameters") or event
-                  secret_key = query_params.get("secret_key")
-
-                  if not secret_key:
-                      return {
-                          "statusCode": 400,
-                          "statusDescription": "400 Bad Request",
-                          "isBase64Encoded": False,
-                          "headers": {
-                              "Content-Type": "application/json"
-                          },
-                          "body": json.dumps({
-                              "error": "Missing secret_key"
-                          })
-                      }
-                  print("Get secret")
-                  secret_response = secrets_client.get_secret_value(
-                      SecretId=secret_key
-                  )
-                  print("Secret retrieved: ", secret_response)
-
-                  secret_value = secret_response["SecretString"]
-                  print("Secret value: ", secret_value)
-
-                  print("Reading bucket")
-                  s3_response = s3_client.list_objects_v2(
-                      Bucket=bucket_name
-                  )
-
-                  objects = [
-                      obj["Key"]
-                      for obj in s3_response.get("Contents", [])
-                  ]
-                  print("Objects in bucket: ", objects)
-
-                  return {
-                      "statusCode": 200,
-                      "statusDescription": "200 OK",
-                      "isBase64Encoded": False,
-                      "headers": {
-                          "Content-Type": "application/json"
-                      },
-                      "body": json.dumps({
-                          "secret_value": secret_value,
-                          "bucket_objects": objects
-                      })
-                  }
-
-              except Exception as e:
-                  return {
-                      "statusCode": 500,
-                      "statusDescription": "500 Internal Server Error",
-                      "isBase64Encoded": False,
-                      "headers": {
-                          "Content-Type": "application/json"
-                      },
-                      "body": json.dumps({
-                          "error": str(e)
-                      })
-                  }
+          __CODE_PLACEHOLDER
       Role: !GetAtt FunctionRole.Arn
       Runtime: "python3.14"
       PackageType: "Zip"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-func"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
 
   FunctionPermission:
     Type: "AWS::Lambda::Permission"
@@ -480,3 +466,23 @@ Resources:
             Effect: "Allow"
             Principal:
               Service: "lambda.amazonaws.com"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-func-role"
+        - Key: "ResourceGroup"
+          Value: !Sub "${NamePrefix}"
+
+  TagResourceGroup:
+    Type: "AWS::ResourceGroups::Group"
+    Properties:
+      Name: !Sub "${NamePrefix}-resource-group"
+      Description: "A group that is based on a tag query"
+      ResourceQuery:
+        Type: "TAG_FILTERS_1_0"
+        Query:
+          ResourceTypeFilters:
+            - "AWS::AllSupported"
+          TagFilters:
+            - Key: "ResourceGroup"
+              Values:
+                - !Sub "${NamePrefix}"
