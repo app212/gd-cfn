@@ -32,7 +32,7 @@ Resources:
     Properties:
       EnableDnsSupport: true
       EnableDnsHostnames: true
-      CidrBlock: !FindInMap [SubnetConfig, VPC, CIDR]
+      CidrBlock: !FindInMap [ SubnetConfig, VPC, CIDR ]
       Tags:
         - Value: !Sub "${NamePrefix}-vpc"
           Key: "Name"
@@ -43,14 +43,14 @@ Resources:
     Type: "AWS::EC2::Subnet"
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [0, !GetAZs ""]
-      CidrBlock: !FindInMap [SubnetConfig, Private0, CIDR]
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      CidrBlock: !FindInMap [ SubnetConfig, Private0, CIDR ]
       MapPublicIpOnLaunch: false
       Ipv6Native: false
       Tags:
         - Value: !Sub
             - "${NamePrefix}-subnet-private0-${Az}"
-            - Az: !Select [0, !GetAZs ""]
+            - Az: !Select [ 0, !GetAZs "" ]
           Key: "Name"
         - Key: "ResourceGroup"
           Value: !Sub "${NamePrefix}"
@@ -59,14 +59,14 @@ Resources:
     Type: "AWS::EC2::Subnet"
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [1, !GetAZs ""]
-      CidrBlock: !FindInMap [SubnetConfig, Private1, CIDR]
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      CidrBlock: !FindInMap [ SubnetConfig, Private1, CIDR ]
       MapPublicIpOnLaunch: false
       Ipv6Native: false
       Tags:
         - Value: !Sub
             - "${NamePrefix}-subnet-private1-${Az}"
-            - Az: !Select [1, !GetAZs ""]
+            - Az: !Select [ 1, !GetAZs "" ]
           Key: "Name"
         - Key: "ResourceGroup"
           Value: !Sub "${NamePrefix}"
@@ -75,14 +75,14 @@ Resources:
     Type: "AWS::EC2::Subnet"
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [0, !GetAZs ""]
-      CidrBlock: !FindInMap [SubnetConfig, Public0, CIDR]
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      CidrBlock: !FindInMap [ SubnetConfig, Public0, CIDR ]
       MapPublicIpOnLaunch: true
       Ipv6Native: false
       Tags:
         - Value: !Sub
             - "${NamePrefix}-subnet-public0-${Az}"
-            - Az: !Select [0, !GetAZs ""]
+            - Az: !Select [ 0, !GetAZs "" ]
           Key: "Name"
         - Key: "ResourceGroup"
           Value: !Sub "${NamePrefix}"
@@ -91,14 +91,14 @@ Resources:
     Type: "AWS::EC2::Subnet"
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [1, !GetAZs ""]
-      CidrBlock: !FindInMap [SubnetConfig, Public1, CIDR]
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      CidrBlock: !FindInMap [ SubnetConfig, Public1, CIDR ]
       MapPublicIpOnLaunch: true
       Ipv6Native: false
       Tags:
         - Value: !Sub
             - "${NamePrefix}-subnet-public1-${Az}"
-            - Az: !Select [1, !GetAZs ""]
+            - Az: !Select [ 1, !GetAZs "" ]
           Key: "Name"
         - Key: "ResourceGroup"
           Value: !Sub "${NamePrefix}"
@@ -231,11 +231,6 @@ Resources:
       GroupName: !Sub "${NamePrefix}-func-sg"
       GroupDescription: "Allow HTTP from LB"
       VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: "tcp"
-          FromPort: 80
-          ToPort: 80
-          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
       SecurityGroupEgress:
         - CidrIp: "0.0.0.0/0"
           IpProtocol: "-1"
@@ -276,14 +271,29 @@ Resources:
           IpProtocol: "tcp"
           FromPort: 80
           ToPort: 80
-      SecurityGroupEgress:
-        - CidrIp: "0.0.0.0/0"
-          IpProtocol: "-1"
       Tags:
         - Key: Name
           Value: !Sub "${NamePrefix}-lb-sec-group"
         - Key: "ResourceGroup"
           Value: !Sub "${NamePrefix}"
+
+  LBSecurityGroupEgress:
+    Type: "AWS::EC2::SecurityGroupEgress"
+    Properties:
+      GroupId: !Ref LoadBalancerSecurityGroup
+      IpProtocol: "tcp"
+      FromPort: 80
+      ToPort: 80
+      DestinationSecurityGroupId: !Ref FunctionSecurityGroup
+
+  FunctionSecurityGroupIngress:
+    Type: "AWS::EC2::SecurityGroupIngress"
+    Properties:
+      GroupId: !Ref FunctionSecurityGroup
+      IpProtocol: "tcp"
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
 
   LoadBalancer:
     Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
